@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS cambios_divisa;
 CREATE TABLE cambios_divisa (
     start_date DATE,
     end_date DATE,
@@ -12,7 +13,5 @@ CREATE TABLE cambios_divisa (
     CNY VARCHAR(25),
     BRL VARCHAR(25),
     ARS VARCHAR(25),
-    JPY VARCHAR(25),
-    change DECIMAL(18, 2),
-    ptc_change DECIMAL(18, 2)
+    JPY VARCHAR(25)
 );
