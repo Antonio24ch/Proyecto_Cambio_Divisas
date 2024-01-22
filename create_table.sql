@@ -1,17 +1,16 @@
 DROP TABLE IF EXISTS cambios_divisa;
 CREATE TABLE cambios_divisa (
-    start_date DATE,
-    end_date DATE,
-    source VARCHAR,
-    EUR VARCHAR(25),
-    GBP VARCHAR(25),
-    USD VARCHAR(25),
-    PEN VARCHAR(25),
-    BTC VARCHAR(25),
-    KRW VARCHAR(25),
-    ING VARCHAR(25),
-    CNY VARCHAR(25),
-    BRL VARCHAR(25),
-    ARS VARCHAR(25),
-    JPY VARCHAR(25)
+    date DATE,
+    source FLOAT,
+    EUR FLOAT(25),
+    GBP FLOAT(25),
+    USD FLOAT(25),
+    PEN FLOAT(25),
+    BTC FLOAT(25),
+    KRW FLOAT(25),
+    ING FLOAT(25),
+    CNY FLOAT(25),
+    BRL FLOAT(25),
+    ARS FLOAT(25),
+    JPY FLOAT(25)
 );
