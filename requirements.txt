@@ -1,0 +1,5 @@
+pandas
+sqlalchemy
+apache-airflow==2.8.0
+psycopg2-binary==2.9.9
+requests==2.31.0
