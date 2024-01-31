@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS cambios_divisa;
 CREATE TABLE cambios_divisa (
     date DATE,
-    source FLOAT,
+    base_currency FLOAT,
     EUR FLOAT(25),
     GBP FLOAT(25),
     USD FLOAT(25),
@@ -12,5 +12,6 @@ CREATE TABLE cambios_divisa (
     CNY FLOAT(25),
     BRL FLOAT(25),
     ARS FLOAT(25),
-    JPY FLOAT(25)
+    JPY FLOAT(25),
+    modified_date DATE
 );
