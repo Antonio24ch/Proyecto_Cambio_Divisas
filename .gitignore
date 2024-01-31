@@ -1,2 +1,5 @@
 credentials.env
+credentials.yaml
+/config
 /logs
+**/__pycache__/
