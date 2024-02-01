@@ -8,12 +8,13 @@ subprocess.run(['pip', 'install', 'psycopg2-binary'])
 import psycopg2
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
+import smtplib
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 from airflow.models import DAG, Variable
 from airflow.operators.bash import BashOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.operators.python_operator import PythonOperator
-
-
 import pytz
 
 
@@ -33,12 +34,15 @@ doc_md = """
 
 
 # ---------- Globals ---------------
-dag_id = "cambio_divisas_entregable3"
+dag_id = "cambio_divisas"
 schedule_interval = "@daily"
 default_args = {
     "owner": "antonio.chavez",
+    "email": ["toch746@gmail.com"],
+    "email_on_retry": False,
     "retries": 3,
-    "retry_delay": timedelta(minutes=5),
+    "retry_delay": timedelta(minutes=5)
+
 }
 
 
@@ -50,6 +54,9 @@ dwh_port = Variable.get("DB_PORT")
 dwh_password = Variable.get("DB_PASSWORD")
 dwh_schema=Variable.get("DB_SCHEMA")
 api_key = Variable.get("API_KEY")
+email_sender = Variable.get("EMAIL_SENDER")
+email_receiver = Variable.get("EMAIL_RECEIVER")
+email_smtp_secret = Variable.get("GMAIL_SMTP_SECRET")
 standard_conforming_strings='on'
 AIRFLOW_UID=50000
 table_name = "cambios_divisa"
@@ -176,6 +183,76 @@ def update_data_to_dw(**context):
         raise e
 
 
+def send_email_alert(**context):
+    try:
+        # Utilizar credenciales 
+        username = dwh_user
+        password = dwh_password
+        host = dwh_host
+        port = dwh_port
+        database = dwh_name
+
+        # Construir la cadena de conexión
+        cadena_conexion = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+
+        # Transformas datos
+        engine = create_engine(cadena_conexion)
+        query = "SELECT * FROM cambios_divisa"
+        new_data = pd.read_sql(query, engine)
+
+        # Calcular la diferencia porcentual para cada divisa con respecto al día anterior
+        new_data.sort_values(by='date', inplace=True)
+        new_data['prev_date'] = new_data['date'].shift(1)
+
+        for currency in ['eur', 'gbp', 'usd', 'pen', 'btc', 'krw', 'inr', 'cny', 'brl', 'ars', 'jpy']:
+            new_data[f'{currency}_change'] = new_data[currency] - new_data[f'{currency}'].shift(1)
+            new_data[f'{currency}_percent_change'] = (new_data[f'{currency}_change'] / new_data[f'{currency}'].shift(1)) * 100
+
+        # Imprimir mensajes personalizados para cada divisa
+        
+        email_body = "¡Buenas noches! el cambio de divisas al día de hoy es el siguiente:\n\n"
+        for currency in ['eur', 'gbp', 'usd', 'pen', 'btc', 'krw', 'inr', 'cny', 'brl', 'ars', 'jpy']:
+            change_column = f'{currency}_change'
+            percent_change_column = f'{currency}_percent_change'
+            last_value = new_data.loc[1, currency]
+            change_value = new_data.loc[1, change_column]
+            percent_change_value = new_data.loc[1, percent_change_column]
+
+            # Calcular el valor en pesos mexicanos utilizando el tipo de cambio con base en 'MXN'
+            mxn_exchange_rate = 1
+            peso_value = mxn_exchange_rate / last_value
+
+            direction = 'subió' if change_value > 0 else 'bajó' if change_value < 0 else 'no cambió'
+
+            email_body += "\n"
+            email_body += f"El {currency.upper()} {direction} {percent_change_value:.2f}%, por lo que al día de hoy, el cierre de un peso mexicano es de {last_value:.9f} {currency.upper()}.\n"
+            email_body += f"Un {currency.upper()} equivale a {peso_value:.2f} pesos mexicanos.\n\n"
+            
+
+        # Mensaje de éxito
+        logging.warning(f"Conectandose al servicio SMTP")
+        obj_smtp = smtplib.SMTP("smtp.gmail.com", 587)
+        obj_smtp.starttls()
+        obj_smtp.login(email_sender, email_smtp_secret)
+        logging.info(f"Conectando exitósamente al servicio SMTP usando {email_sender}")
+
+        dag_name = "currency exchange"
+        mexico_tz = pytz.timezone('America/Mexico_City')  # Selecciona la zona horaria de México
+        fecha = datetime.now(mexico_tz).strftime('%Y-%m-%d %H:%M:%S')
+        subject = "Subject: {} - {}\n\n".format(dag_name, fecha).encode('utf-8')
+        message = (subject.decode('utf-8') + "\n\n" + email_body).encode('utf-8')
+        logging.info("Mensaje construido")
+
+        logging.warning(
+            f"Enviando mensaje {subject.decode('utf-8')}, remitente: {email_sender}, destinatario: {email_receiver}"
+        )
+        obj_smtp.sendmail(email_sender, email_receiver, message)
+        logging.info(f"Mensaje enviado exitósamente a {email_sender}")
+
+    except Exception as e:
+        logging.error(f"Error al insertar datos en la base de datos: {str(e)}")
+        logging.exception("Detalles completos de la excepción:")
+        raise e
 
 
 with DAG(
@@ -183,7 +260,7 @@ with DAG(
     default_args=default_args,
     max_active_runs=1,
     schedule_interval=schedule_interval,
-    start_date=datetime(2024,1,29),
+    start_date=datetime(2024,1,30),
     description="Extracción del último cambio de divisas de currency api, corre a las 00:00 HRS todos los días",
     catchup=True,
     doc_md=doc_md,
@@ -216,4 +293,15 @@ with DAG(
         trigger_rule="all_success"
     )
 
-    get_and_transform_data >> load_data >> update_data
+
+
+    email_alerts= PythonOperator(
+        task_id="email_alerts",
+        python_callable=send_email_alert,
+        dag=dag, 
+        provide_context=True,
+        trigger_rule="all_success"
+    )
+
+
+    get_and_transform_data >> load_data >> update_data >> email_alerts
